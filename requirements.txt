@@ -1,0 +1,11 @@
+# Python 3.9 - 3.12 (venv-e install koro)
+torch
+numpy<2
+pyyaml
+tqdm
+matplotlib
+seaborn
+scikit-learn
+# MediaPipe: 'mp.solutions' API lage. Notun version-e eta nai, tai pin kora.
+mediapipe==0.10.14
+# (opencv-contrib-python mediapipe-er sathe ashe; alada opencv-python install kora lagbe na)

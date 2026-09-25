@@ -1,0 +1,45 @@
+# ============================================================
+#  config.yaml  -  ST-GCN (MediaPipe body + hand, 75 node)
+#  Shob script (extract / create_dataset / train / test / demo) ei file pore.
+# ============================================================
+
+# ---------------- classes ----------------
+# Tomar nijer class-er nam dao. Nam-gulo video-dir-er sub-folder-er nam-er sathe hubohu mille jete hobe.
+class-names: ['cp', 'itw', 'td']
+
+# ---------------- paths ----------------
+video-dir: 'videos'          # data/videos/<class>/*.mp4
+pose-dir: 'util/poses'            # data/poses/<class>/*.npy   (T x 75 x 3)
+dataset-path-train: 'data/train.pkl'
+dataset-path-val: 'data/val.pkl'
+dataset-path-test: 'data/test.pkl'
+project: 'runs'                   # runs/exp0, exp1, ...
+
+# ---------------- step 1: pose extraction ----------------
+target-fps: 30                    # video-r fps beshi hole frame drop kore ~30 kora hoy
+pose-conf: 0.5                    # MediaPipe Pose detection/tracking confidence
+hand-conf: 0.5                    # MediaPipe Hands detection/tracking confidence
+kpt-conf: 0.2                     # er niche conf-er joint interpolate kora hoy
+min-valid-ratio: 0.3              # koto % frame-e body detect na hole video skip
+
+# ---------------- graph ----------------
+graph-layout: 'body_hand'         # 33 pose + 21 left hand + 21 right hand = 75
+graph-strategy: 'spatial'         # uniform | distance | spatial
+graph-max-hop: 3
+
+# ---------------- step 2: dataset ----------------
+num-frame: 30                     # ekta window-e koyta raw frame
+window-stride: 10                 # window-er moddhe gap (frame)
+split-ratio: [0.7, 0.15, 0.15]    # train / val / test  (VIDEO-level split), sum = 1
+seed: 42
+
+# ---------------- preprocessing (train/test/demo shob jaygay same) ----------------
+frame-skip: 2                     # 30 frame -> 15 frame (network input T = num-frame / frame-skip)
+norm-mode: 'window'               # 'frame' (original repo) | 'window' (absolute movement rekhe dey)
+
+# ---------------- step 3: training ----------------
+epochs: 100
+batch-size: 32
+lr: 0.0001
+num-workers: 2
+augment: true                     # flip + scale + noise
