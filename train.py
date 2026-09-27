@@ -3,10 +3,12 @@ STEP 3 - Train two-stream ST-GCN.
 
     python train.py
     python train.py --config config.yaml
+    python train.py --resume runs/exp0/checkpoint.pt
 
-Output: runs/exp{n}/best.pt  last.pt  meta.json  history.json  result.png
+Output: runs/exp{n}/best.pt  last.pt  checkpoint.pt  meta.json  history.json  result.png
 (best.pt = VALIDATION accuracy sobcheye bhalo jei epoch-e; test set-e kokhono
  model select kora hoyni.)
+(checkpoint.pt = protijo epoch sheshe save hoy, --resume die abar shuru kora jay)
 """
 import os
 import json
@@ -63,6 +65,8 @@ def run_epoch(model, loader, criterion, device, optimizer=None, augment=False, f
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--config', default='config.yaml')
+    ap.add_argument('--resume', default=None,
+                     help='checkpoint.pt path dile shekhan theke abar train shuru hobe')
     args = ap.parse_args()
     with open(args.config, 'r') as f:
         cfg = yaml.safe_load(f)
@@ -94,29 +98,46 @@ def main():
     val_loader = DataLoader(make_dataset(x_va, y_va), batch_size=cfg['batch-size'],
                             shuffle=False, num_workers=cfg['num-workers'], pin_memory=pin)
 
-    # ---------------- output folder ----------------
-    os.makedirs(cfg['project'], exist_ok=True)
-    k = 0
-    while os.path.exists(os.path.join(cfg['project'], f'exp{k}')):
-        k += 1
-    save_dir = os.path.join(cfg['project'], f'exp{k}')
-    os.makedirs(save_dir)
-    meta = {'class_names': class_names, 'frame_skip': cfg['frame-skip'],
-            'norm_mode': cfg['norm-mode'], 'num_frame': cfg['num-frame'],
-            'graph_args': GRAPH_ARGS}
-    with open(os.path.join(save_dir, 'meta.json'), 'w') as f:
-        json.dump(meta, f, indent=2)
-    with open(os.path.join(save_dir, 'config_used.yaml'), 'w') as f:
-        yaml.safe_dump(cfg, f, sort_keys=False)
-
     # ---------------- model ----------------
     model = TwoStreamSpatialTemporalGraph(GRAPH_ARGS, num_class).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg['lr'])
     criterion = torch.nn.BCELoss()            # model output = sigmoid, labels = one-hot
 
+    start_epoch = 0
     hist = {'train_loss': [], 'train_acc': [], 'val_loss': [], 'val_acc': []}
     best_acc, best_loss, best_epoch = -1.0, float('inf'), -1
-    for epoch in range(cfg['epochs']):
+
+    # ---------------- output folder ----------------
+    if args.resume:
+        # Purono exp folder-e i continue kora hobe, notun folder banabe na
+        save_dir = os.path.dirname(args.resume)
+        ckpt = torch.load(args.resume, map_location=device)
+        model.load_state_dict(ckpt['model_state'])
+        optimizer.load_state_dict(ckpt['optimizer_state'])
+        start_epoch = ckpt['epoch'] + 1
+        hist = ckpt['hist']
+        best_acc = ckpt['best_acc']
+        best_loss = ckpt['best_loss']
+        best_epoch = ckpt['best_epoch']
+        print(f'Resume kora hocche: {args.resume} theke, epoch {start_epoch + 1} theke shuru hobe')
+    else:
+        os.makedirs(cfg['project'], exist_ok=True)
+        k = 0
+        while os.path.exists(os.path.join(cfg['project'], f'exp{k}')):
+            k += 1
+        save_dir = os.path.join(cfg['project'], f'exp{k}')
+        os.makedirs(save_dir)
+        meta = {'class_names': class_names, 'frame_skip': cfg['frame-skip'],
+                'norm_mode': cfg['norm-mode'], 'num_frame': cfg['num-frame'],
+                'graph_args': GRAPH_ARGS}
+        with open(os.path.join(save_dir, 'meta.json'), 'w') as f:
+            json.dump(meta, f, indent=2)
+        with open(os.path.join(save_dir, 'config_used.yaml'), 'w') as f:
+            yaml.safe_dump(cfg, f, sort_keys=False)
+
+    ckpt_path = os.path.join(save_dir, 'checkpoint.pt')
+
+    for epoch in range(start_epoch, cfg['epochs']):
         t0 = time.time()
         tr_loss, tr_acc = run_epoch(model, train_loader, criterion, device, optimizer,
                                     augment=cfg['augment'], flip_idx=flip_idx)
@@ -133,6 +154,17 @@ def main():
               f'val loss {va_loss:.4f} acc {va_acc:.4f} | '
               f'{str(datetime.timedelta(seconds=int(time.time() - t0)))}'
               f'{"  <- best" if improved else ""}')
+
+        # ---------------- checkpoint (protijo epoch sheshe) ----------------
+        torch.save({
+            'epoch': epoch,
+            'model_state': model.state_dict(),
+            'optimizer_state': optimizer.state_dict(),
+            'hist': hist,
+            'best_acc': best_acc,
+            'best_loss': best_loss,
+            'best_epoch': best_epoch,
+        }, ckpt_path)
 
     torch.save(model.state_dict(), os.path.join(save_dir, 'last.pt'))
     with open(os.path.join(save_dir, 'history.json'), 'w') as f:
